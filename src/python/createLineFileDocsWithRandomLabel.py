@@ -17,6 +17,7 @@
 
 import sys
 import os
+import re
 
 from random import randrange
 
@@ -28,20 +29,26 @@ Usage: python createLineFileDocsWithRandomLabel.py
 ORIGINAL_LINEFILE = 'enwiki-20120502-lines-1k.txt'
 TARGET_LINEFILE = 'enwiki-20120502-lines-1k-with-random-label.txt'
 
-def createLineFileDocsWithRandomLabels():
-    cwd = os.getcwd()
-    parent, base = os.path.split(cwd)
-    data_dir = os.path.join(parent, 'data')
+def createLineFileDocsWithRandomLabels(original_file, target_file):
+    if original_file is None:
+        cwd = os.getcwd()
+        parent, base = os.path.split(cwd)
+        data_dir = os.path.join(parent, 'data')
 
-    if not os.path.exists(data_dir):
-        print('download data before running this script')
-        exit()
+        if not os.path.exists(data_dir):
+            print('download data before running this script')
+            exit()
 
-    original_file = os.path.join(data_dir, ORIGINAL_LINEFILE)
-    target_file = os.path.join(data_dir, TARGET_LINEFILE)
+        original_file = os.path.join(data_dir, ORIGINAL_LINEFILE)
+        target_file = os.path.join(data_dir, TARGET_LINEFILE)
+    else:
+        if not os.path.exist(original_file) or not os.path.exists(target_file):
+            print("Recieved invalid path to data")
+            exit()
 
     with open(original_file, 'r', encoding='ISO-8859-1') as original, open(target_file, 'w', encoding='ISO-8859-1') as out:
         first_line = True
+        skipped = 0
         i = 0
         for line in original:
             if i % 100000 == 0:
@@ -49,7 +56,6 @@ def createLineFileDocsWithRandomLabels():
             line_arr = line.strip().split('\t')
             if first_line:
                 line_arr.append('RandomLabel')
-                first_line = False
             else:
                 try:
                     random_label = chooseRandomLabel(line_arr[2])
@@ -58,23 +64,47 @@ def createLineFileDocsWithRandomLabels():
                     line_arr.append('EMPTY_LABEL')
                     random_label = 'EMPTY_LABEL'
                 line_arr.append(random_label)
+            # have a completely invalid line, we can just skip
+            if len(line_arr) != 4 and not first_line:
+                print("Skipping invalid line: ", line)
+                skipped += 1
+                continue
+            for s in line_arr:
+                if not isNotEmpty(s):
+                    print("Found invalid line: \"", line, "\", skipping...")
+                    skipped += 1
+                    continue
+            first_line = False
             line_to_write = '\t'.join(line_arr) + '\n'
             out.write(line_to_write)
             i += 1
+        print("Indexed ", i, " total documents")
+        print("Skipped ", skipped, " documents")
 
 def chooseRandomLabel(body):
-    body_arr = body.split(' ')
+    body_arr = list(filter(isNotEmpty, re.split(r'\W', body)))
     label = None
     i = 0
-    while (label == None or label == '') and i < 5:
+    while isNotEmpty(label) and i < 5:
         label = body_arr[randrange(len(body_arr))]
-    if label == None or label == '':
+    if not isNotEmpty(label):
         return "EMPTY_LABEL"
     else:
         return label
+
+def isNotEmpty(str):
+    if str and str.strip():
+        return True
+    return False
 
 if __name__ == '__main__':
     if '-help' in sys.argv or '--help' in sys.argv:
         print(USAGE)
     else:
-        createLineFileDocsWithRandomLabels()
+        if len(sys.argv) == 3:
+            createLineFileDocsWithRandomLabels(original_linefile, target_linefile)
+        elif len(sys.argv) == 1:
+            createLineFileDocsWithRandomLabels(None, None)
+        else:
+            print("Invalid arguments")
+            exit()
